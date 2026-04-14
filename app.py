@@ -9,12 +9,7 @@ import data_processor as dp
 st.set_page_config(page_title="Running Stats", layout="wide", menu_items={})
 
 
-# ---------------------------------------------------------------------------
-# Helper
-# ---------------------------------------------------------------------------
-
 def format_pace(decimal_minutes):
-    """Convert 6.5 → '6:30 /km'"""
     if pd.isna(decimal_minutes):
         return "–"
     minutes = int(decimal_minutes)
@@ -22,12 +17,7 @@ def format_pace(decimal_minutes):
     return f"{minutes}:{seconds:02d} /km"
 
 
-# ---------------------------------------------------------------------------
-# Charts  (one function per chart, each returns a Plotly figure)
-# ---------------------------------------------------------------------------
-
 def chart_pace_trend(df):
-    """Scatter of pace over time + 10-run rolling average."""
     df = df.dropna(subset=["pace_min_per_km"]).copy()
     df["rolling_avg"] = df["pace_min_per_km"].rolling(window=10, min_periods=3).mean()
 
@@ -37,12 +27,11 @@ def chart_pace_trend(df):
                      hover_data={"pace_label": True, "pace_min_per_km": False})
     fig.add_scatter(x=df["date"], y=df["rolling_avg"],
                     mode="lines", name="10-run average", line=dict(width=2))
-    fig.update_yaxes(autorange="reversed")  # lower pace = faster, so put it at the top
+    fig.update_yaxes(autorange="reversed")
     return fig
 
 
 def chart_weekly_volume(df):
-    """Bar chart of total km per week."""
     weekly = df.groupby("week_start")["distance_km"].sum().reset_index()
     weekly.columns = ["week", "km"]
 
@@ -53,7 +42,6 @@ def chart_weekly_volume(df):
 
 
 def chart_hr_distribution(df):
-    """Histogram of average heart rate."""
     df = df.dropna(subset=["average_heartrate"])
 
     fig = px.histogram(df, x="average_heartrate", nbins=25,
@@ -63,7 +51,6 @@ def chart_hr_distribution(df):
 
 
 def chart_hr_over_time(df):
-    """Scatter of average HR over time + 8-run rolling average."""
     df = df.dropna(subset=["average_heartrate"]).copy()
     df["rolling_avg"] = df["average_heartrate"].rolling(window=8, min_periods=3).mean()
 
@@ -76,12 +63,10 @@ def chart_hr_over_time(df):
 
 
 def chart_pace_vs_hr(df):
-    """Scatter of pace vs heart rate with a trend line."""
     df = df.dropna(subset=["pace_min_per_km", "average_heartrate"])
     if len(df) < 5:
         return None, None, None
 
-    # Linear regression: how does HR predict pace?
     _, _, r, p_value, _ = stats.linregress(
         df["average_heartrate"], df["pace_min_per_km"]
     )
@@ -96,7 +81,6 @@ def chart_pace_vs_hr(df):
 
 
 def chart_pace_regression(df):
-    """Linear regression of pace improvement over all runs."""
     df = df.dropna(subset=["pace_min_per_km"]).copy()
     if len(df) < 5:
         return None, {}
@@ -107,10 +91,9 @@ def chart_pace_regression(df):
     slope, intercept, r, p_value, _ = stats.linregress(x, y)
     trend_line = slope * x + intercept
 
-    # How many runs happen per month on average?
     days_total = (df["date"].max() - df["date"].min()).days or 1
     runs_per_month = (len(df) / days_total) * 30.44
-    monthly_change = slope * runs_per_month  # negative = getting faster
+    monthly_change = slope * runs_per_month
 
     fig = px.scatter(df, x="date", y="pace_min_per_km",
                      title="Pace Improvement — Linear Regression",
@@ -121,18 +104,14 @@ def chart_pace_regression(df):
     fig.update_yaxes(autorange="reversed")
 
     result = {
-        "r_squared":     r ** 2,
-        "p_value":       p_value,
+        "r_squared":      r ** 2,
+        "p_value":        p_value,
         "monthly_change": monthly_change,
-        "first_pace":    intercept + slope * 1,
-        "last_pace":     intercept + slope * len(df),
+        "first_pace":     intercept + slope * 1,
+        "last_pace":      intercept + slope * len(df),
     }
     return fig, result
 
-
-# ---------------------------------------------------------------------------
-# Upload screen
-# ---------------------------------------------------------------------------
 
 def show_upload_screen():
     st.title("Running Stats")
@@ -148,44 +127,34 @@ def show_upload_screen():
     return uploaded_file
 
 
-
-
-# ---------------------------------------------------------------------------
-# Main dashboard
-# ---------------------------------------------------------------------------
-
 def show_dashboard(df):
     st.title("Running Stats")
     if st.button("Remove data"):
         del st.session_state["df"]
         st.rerun()
 
-    # --- Summary numbers at the top ---
     hr_df = df.dropna(subset=["average_heartrate"])
 
     col1, col2, col3, col4, col5, col6 = st.columns(6)
-    col1.metric("Runs",          f"{len(df):,}")
+    col1.metric("Runs",           f"{len(df):,}")
     col2.metric("Total distance", f"{df['distance_km'].sum():,.0f} km")
-    col3.metric("Avg pace",      format_pace(df["pace_min_per_km"].mean()))
-    col4.metric("Best pace",     format_pace(df["pace_min_per_km"].min()))
-    col5.metric("Longest run",   f"{df['distance_km'].max():.1f} km")
-    col6.metric("Avg HR",        f"{hr_df['average_heartrate'].mean():.0f} bpm" if len(hr_df) else "–")
+    col3.metric("Avg pace",       format_pace(df["pace_min_per_km"].mean()))
+    col4.metric("Best pace",      format_pace(df["pace_min_per_km"].min()))
+    col5.metric("Longest run",    f"{df['distance_km'].max():.1f} km")
+    col6.metric("Avg HR",         f"{hr_df['average_heartrate'].mean():.0f} bpm" if len(hr_df) else "–")
 
     st.divider()
 
-    # --- Pace trend ---
     st.subheader("Pace over Time")
     st.plotly_chart(chart_pace_trend(df), use_container_width=True)
 
     st.divider()
 
-    # --- Weekly volume ---
     st.subheader("Weekly Volume")
     st.plotly_chart(chart_weekly_volume(df), use_container_width=True)
 
     st.divider()
 
-    # --- Heart rate ---
     st.subheader("Heart Rate Analysis")
     if len(hr_df) < 3:
         st.info("Not enough runs with heart rate data.")
@@ -203,7 +172,6 @@ def show_dashboard(df):
 
     st.divider()
 
-    # --- Pace vs HR correlation ---
     st.subheader("Pace vs Heart Rate")
     fig_corr, r, p = chart_pace_vs_hr(df)
     if fig_corr:
@@ -217,7 +185,6 @@ def show_dashboard(df):
 
     st.divider()
 
-    # --- Pace regression ---
     st.subheader("Pace Improvement (Linear Regression)")
     fig_reg, reg = chart_pace_regression(df)
     if fig_reg:
@@ -238,7 +205,6 @@ def show_dashboard(df):
 
     st.divider()
 
-    # --- Raw data table ---
     with st.expander("Show all runs"):
         display = df[["date", "name", "distance_km", "pace_label",
                       "duration_min", "average_heartrate"]].copy()
@@ -248,11 +214,6 @@ def show_dashboard(df):
         st.dataframe(display, use_container_width=True, hide_index=True)
 
 
-# ---------------------------------------------------------------------------
-# Entry point  (Streamlit reruns this whole file on every interaction)
-# ---------------------------------------------------------------------------
-
-# st.session_state persists data between reruns so we don't reload the file each time
 if "df" not in st.session_state:
     uploaded_file = show_upload_screen()
 
