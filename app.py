@@ -6,7 +6,7 @@ from scipy import stats
 import data_processor as dp
 
 
-st.set_page_config(page_title="Running Stats", layout="wide")
+st.set_page_config(page_title="Running Stats", layout="wide", menu_items={})
 
 
 # ---------------------------------------------------------------------------
@@ -148,30 +148,6 @@ def show_upload_screen():
     return uploaded_file
 
 
-# ---------------------------------------------------------------------------
-# Sidebar filters  (returns a filtered copy of the dataframe)
-# ---------------------------------------------------------------------------
-
-def apply_filters(df):
-    with st.sidebar:
-        st.header("Filters")
-
-        date_from = st.date_input("From", value=df["date"].min().date())
-        date_to   = st.date_input("To",   value=df["date"].max().date())
-        min_km    = st.slider("Min distance (km)", 0.0, 5.0, 0.0, 0.5)
-        max_pace  = st.slider("Max pace (min/km)", 4.0, 15.0, 12.0, 0.5)
-
-        if st.button("Remove data"):
-            del st.session_state["df"]
-            st.rerun()
-
-    filtered = df[
-        (df["date"].dt.date >= date_from) &
-        (df["date"].dt.date <= date_to) &
-        (df["distance_km"] >= min_km) &
-        (df["pace_min_per_km"].fillna(0) <= max_pace)
-    ]
-    return filtered
 
 
 # ---------------------------------------------------------------------------
@@ -180,6 +156,9 @@ def apply_filters(df):
 
 def show_dashboard(df):
     st.title("Running Stats")
+    if st.button("Remove data"):
+        del st.session_state["df"]
+        st.rerun()
 
     # --- Summary numbers at the top ---
     hr_df = df.dropna(subset=["average_heartrate"])
@@ -286,9 +265,4 @@ if "df" not in st.session_state:
             except Exception as error:
                 st.error(f"Could not read file: {error}")
 else:
-    df = apply_filters(st.session_state["df"])
-
-    if df.empty:
-        st.warning("No runs match the current filters.")
-    else:
-        show_dashboard(df)
+    show_dashboard(st.session_state["df"])
