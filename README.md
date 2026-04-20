@@ -2,6 +2,9 @@
 
 Visualise your Strava running history — pace trends, weekly volume, heart rate analysis, and pace improvement over time.
 
+**Authors:** Seedorf & Gian  
+**Module:** I.BA_STCSA.F2601
+
 ## Setup
 
 ```bash
