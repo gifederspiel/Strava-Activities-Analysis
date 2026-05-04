@@ -52,13 +52,17 @@ def chart_hr_distribution(df):
 
 def chart_hr_over_time(df):
     df = df.dropna(subset=["average_heartrate"]).copy()
-    df["rolling_avg"] = df["average_heartrate"].rolling(window=8, min_periods=3).mean()
 
     fig = px.scatter(df, x="date", y="average_heartrate",
-                     title="Heart Rate over Time",
+                     title="Heart Rate Trend",
                      labels={"average_heartrate": "avg HR (bpm)", "date": ""})
-    fig.add_scatter(x=df["date"], y=df["rolling_avg"],
-                    mode="lines", name="8-run average", line=dict(width=2))
+
+    if len(df) >= 2:
+        x = df["run_number"].values.astype(float)
+        slope, intercept, _, _, _ = stats.linregress(x, df["average_heartrate"])
+        fig.add_scatter(x=df["date"], y=intercept + slope * x,
+                        mode="lines", name="trend",
+                        line=dict(width=2, color="red"))
     return fig
 
 
@@ -81,13 +85,18 @@ def chart_pace_vs_hr(df):
 
 
 def chart_pace_regression(df):
-    df = df.dropna(subset=["pace_min_per_km"]).copy()
+    df = df.dropna(subset=["pace_min_per_km", "average_heartrate"]).copy()
     if len(df) < 5:
         return None, {}
 
-    x = df["run_number"].values.astype(float)
-    y = df["pace_min_per_km"].values
+    hr_slope, hr_intercept, _, _, _ = stats.linregress(
+        df["average_heartrate"], df["pace_min_per_km"]
+    )
+    expected_pace = hr_intercept + hr_slope * df["average_heartrate"]
+    df["pace_residual"] = df["pace_min_per_km"] - expected_pace
 
+    x = df["run_number"].values.astype(float)
+    y = df["pace_residual"].values
     slope, intercept, r, p_value, _ = stats.linregress(x, y)
     trend_line = slope * x + intercept
 
@@ -95,20 +104,24 @@ def chart_pace_regression(df):
     runs_per_month = (len(df) / days_total) * 30.44
     monthly_change = slope * runs_per_month
 
-    fig = px.scatter(df, x="date", y="pace_min_per_km",
-                     title="Pace Improvement — Linear Regression",
-                     labels={"pace_min_per_km": "min / km", "date": ""},
-                     hover_data={"pace_label": True, "pace_min_per_km": False})
+    fig = px.scatter(df, x="date", y="pace_residual",
+                     title="HR-Adjusted Pace Improvement — Linear Regression",
+                     labels={"pace_residual": "pace vs expected for HR (min/km)",
+                             "date": ""},
+                     hover_data={"pace_label": True,
+                                 "average_heartrate": ":.0f",
+                                 "pace_residual": ":.2f"})
     fig.add_scatter(x=df["date"], y=trend_line,
                     mode="lines", name="trend", line=dict(width=2, color="red"))
-    fig.update_yaxes(autorange="reversed")
+    fig.add_hline(y=0, line_dash="dot", line_color="gray",
+                  annotation_text="expected pace at this HR")
 
     result = {
         "r_squared":      r ** 2,
         "p_value":        p_value,
         "monthly_change": monthly_change,
-        "first_pace":     intercept + slope * 1,
-        "last_pace":      intercept + slope * len(df),
+        "first_residual": intercept + slope * 1,
+        "last_residual":  intercept + slope * len(df),
     }
     return fig, result
 
@@ -145,13 +158,13 @@ def show_dashboard(df):
 
     st.divider()
 
-    st.subheader("Pace over Time")
-    st.plotly_chart(chart_pace_trend(df), use_container_width=True)
+    st.subheader("Weekly Volume")
+    st.plotly_chart(chart_weekly_volume(df), use_container_width=True)
 
     st.divider()
 
-    st.subheader("Weekly Volume")
-    st.plotly_chart(chart_weekly_volume(df), use_container_width=True)
+    st.subheader("Pace over Time")
+    st.plotly_chart(chart_pace_trend(df), use_container_width=True)
 
     st.divider()
 
@@ -185,23 +198,25 @@ def show_dashboard(df):
 
     st.divider()
 
-    st.subheader("Pace Improvement (Linear Regression)")
+    st.subheader("HR-Adjusted Pace Improvement (Linear Regression)")
+    st.caption("Pace residual after removing the effect of HR. "
+               "A downward trend means you're getting faster at the same heart rate.")
     fig_reg, reg = chart_pace_regression(df)
     if fig_reg:
         st.plotly_chart(fig_reg, use_container_width=True)
 
         monthly = reg["monthly_change"]
         direction = "faster" if monthly < 0 else "slower"
-        net = abs(reg["last_pace"] - reg["first_pace"])
+        net = abs(reg["last_residual"] - reg["first_residual"])
         significant = "yes" if reg["p_value"] < 0.05 else "no"
 
         st.write(f"R² = **{reg['r_squared']:.4f}** · "
                  f"p = **{reg['p_value']:.4f}** · "
                  f"significant: **{significant}**")
-        st.write(f"Monthly change: **{abs(monthly):.3f} min/km {direction}** · "
-                 f"Net improvement over all runs: **{format_pace(net)}** ({direction})")
+        st.write(f"Monthly change: **{abs(monthly):.3f} min/km {direction}** at the same HR · "
+                 f"Net change over all runs: **{format_pace(net)}** ({direction})")
     else:
-        st.info("Need at least 5 runs.")
+        st.info("Need at least 5 runs with HR data.")
 
     st.divider()
 
